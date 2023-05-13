@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package machineid
@@ -36,24 +37,47 @@ const (
 // The logic implemented is a variation of the one described in https://github.com/denisbrodbeck/machineid/issues/5#issuecomment-523803164
 // See also https://unix.stackexchange.com/questions/144812/generate-consistent-machine-unique-id
 func machineID() (string, error) {
-	env_pathname := os.Getenv(ENV_VARNAME)
+	sp := searchPaths()
+	return lookupMachineID(sp)
+}
 
-	home := os.Getenv("HOME")
-	userMachineId := path.Join(home, ".config", "machine-id")
-
-	id, err := readFirstFile([]string{
-		env_pathname, dbusPath, dbusPathEtc, userMachineId,
-	})
-	if err != nil {
-		id, err = readFile(linuxRandomUuid)
-		if err == nil {
-			writeFirstFile([]string{
-				env_pathname, dbusPathEtc, dbusPath, userMachineId,
-			}, id)
-		}
-	}
+func lookupMachineID(sp []string) (string, error) {
+	b, err := readFirstFile(sp)
 	if err != nil {
 		return "", err
 	}
-	return trim(string(id)), nil
+	if len(b) == 0 {
+		return generateID(sp)
+	}
+	return string(b), nil
+}
+
+func generateID(paths []string) (string, error) {
+	b, err := readFile(linuxRandomUuid)
+	if err != nil {
+		return "", err
+	}
+	if err := writeFirstFile(paths, b); err != nil {
+		return "", err
+	}
+	return trim(string(b)), nil
+}
+
+func searchPaths() []string {
+	paths := make([]string, 0, 4)
+
+	env_pathname := os.Getenv(ENV_VARNAME)
+	if env_pathname != "" {
+		paths = append(paths, env_pathname)
+	}
+
+	paths = append(paths, dbusPath, dbusPathEtc)
+
+	home := os.Getenv("HOME")
+	if home != "" {
+		userMachineId := path.Join(home, ".config", "machine-id")
+		paths = append(paths, userMachineId)
+	}
+
+	return paths
 }

@@ -1,9 +1,11 @@
 package machineid
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -35,19 +37,24 @@ func writeFile(filename string, data []byte) error {
 	return ioutil.WriteFile(filename, data, 0644)
 }
 
-// readFirstFile tries all the pathnames listed and returns the contents of the first readable file.
+// readFirstFile tries all the pathnames listed and returns the contents of the first non-empty readable file.
+// If all files are unreadable, it returns the error from the attempt to read the last file.
+// The function also trims any leading and trailing white space characters from the file contents.
 func readFirstFile(pathnames []string) ([]byte, error) {
-	contents := []byte{}
-	var err error
+	lastErr := errors.New("no files provided")
 	for _, pathname := range pathnames {
-		if pathname != "" {
-			contents, err = readFile(pathname)
-			if err == nil {
-				return contents, nil
-			}
+		contents, err := readFile(pathname)
+		if err != nil && lastErr != nil {
+			lastErr = err
+			continue
+		}
+		lastErr = nil
+		contents = bytes.TrimSpace(contents)
+		if len(contents) > 0 {
+			return contents, nil
 		}
 	}
-	return contents, err
+	return nil, lastErr
 }
 
 // writeFirstFile writes to the first file that "works" between all pathnames listed.
